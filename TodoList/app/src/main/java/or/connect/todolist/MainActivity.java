@@ -1,6 +1,11 @@
 package or.connect.todolist;
 
 import android.app.Activity;
+import android.content.Context;
+import android.content.Intent;
+import android.database.sqlite.SQLiteDatabase;
+import android.database.sqlite.SQLiteOpenHelper;
+import android.net.Uri;
 import android.os.Bundle;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -9,45 +14,97 @@ import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.EditText;
 import android.widget.ListView;
+import android.widget.Toast;
 
+import com.activeandroid.Model;
+import com.activeandroid.annotation.Column;
+import com.activeandroid.annotation.Table;
+import com.activeandroid.query.Select;
+
+import org.apache.commons.io.FileUtils;
+
+import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
+import java.util.List;
 
+/*
+@Table(name = "Tasks")
+public class Task extends Model {
+
+    @Column(name = "pos") //, unique = true, onUniqueConflict = Column.ConflictAction.REPLACE)
+    public int pos;
+
+
+    @Column(name = "taskName")
+    public String taskName;
+
+    public Task() {
+        super();
+    }
+
+    public Task(int pos, String taskName) {
+        super();
+        this.pos = pos;
+        this.taskName = taskName;
+    }
+}
+*/
 
 public class MainActivity extends Activity {
     ArrayList<String> items;
     ArrayAdapter<String> itemAdapter;
     ListView lvItems;
 
+    private final int REQUEST_CODE = 1;
+
+    private static final boolean DEBUG = false;
+
+
+    private void readItems() {
+        /* Using Files... */
+        File filesDir = getFilesDir();
+        File todoFile = new File(filesDir, "todo.txt");
+
+        try {
+            items = new ArrayList<String>(FileUtils.readLines(todoFile));
+        } catch (IOException e) {
+            items = new ArrayList<String>();
+        }
+
+        /*
+         * Using ActiveAndroid...
+         *
+         * items = new ArrayList<String>(); //new Select().from(Task.class));
+         */
+    }
+
+    private void writeItems() {
+        File filesDir = getFilesDir();
+        File todoFile = new File(filesDir, "todo.txt");
+        try {
+            FileUtils.writeLines(todoFile, items);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        items = new ArrayList<String>();
+        //items = new ArrayList<String>();
+        readItems();
         lvItems = (ListView)findViewById(R.id.lvItems);
         itemAdapter = new ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, items);
         lvItems.setAdapter(itemAdapter);
-        items.add("First Item");
-        items.add("Second Item");
+        writeItems();
+        if (items.isEmpty()) {
+            Toast.makeText(this, "First Item", Toast.LENGTH_SHORT).show();
+            items.add("First Item");
+            items.add("Second Item");
+        }
         setupItemListener();
-    }
-
-    public void setupItemListener() {
-        lvItems.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
-            @Override
-            public boolean onItemLongClick(AdapterView<?> parent,
-                                           View view, int position, long id ) {
-                items.remove(position);
-                itemAdapter.notifyDataSetChanged();
-                return true;
-            }
-        });
-    }
-
-    public void onAddItem(View v) {
-        EditText etNewItem = (EditText) findViewById(R.id.etNewItem);
-        String itemText = etNewItem.getText().toString();
-        itemAdapter.add(itemText);
-        etNewItem.setText("");
     }
 
     @Override
@@ -70,5 +127,59 @@ public class MainActivity extends Activity {
         }
 
         return super.onOptionsItemSelected(item);
+    }
+
+    public void setupItemListener() {
+        lvItems.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
+            @Override
+            public boolean onItemLongClick(AdapterView<?> parent,
+                                           View view, int position, long id) {
+                items.remove(position);
+                itemAdapter.notifyDataSetChanged();
+                writeItems();
+                return true;
+            }
+        });
+        lvItems.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+            @Override
+            public void onItemClick(AdapterView<?> parent,
+                                    View view, int position, long id) {
+
+                // first parameter is the context, second is the class of the activity to launch
+                Intent i = new Intent(MainActivity.this, edit_item.class);
+
+                i.putExtra("editPos", position);
+                i.putExtra("editItem", items.get(position));
+
+                startActivityForResult(i, REQUEST_CODE); // brings up the edit
+            }
+        });
+    }
+
+    public void onAddItem(View v) {
+        EditText etNewItem = (EditText) findViewById(R.id.etNewItem);
+        String itemText = etNewItem.getText().toString();
+        itemAdapter.add(itemText);
+        etNewItem.setText("");
+        writeItems();
+    }
+
+
+    // Handle the result from edit activity...
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (resultCode == RESULT_OK && requestCode == REQUEST_CODE) {
+            // Extract name value from result extras
+            String updItem = data.getExtras().getString("updatedText");
+            int position = data.getExtras().getInt("editPos");
+
+            if (DEBUG) {
+                Toast.makeText(this, updItem, Toast.LENGTH_SHORT).show();
+            }
+            items.remove(position);
+            items.add(position, updItem);
+            itemAdapter.notifyDataSetChanged();
+            writeItems();
+        }
     }
 }
